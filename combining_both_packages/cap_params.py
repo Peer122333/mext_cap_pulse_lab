@@ -18,8 +18,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # ===================== CONTROL =====================
-BASE_DIR     = r"/Users/peer/Documents/00 MEXT BA/10 Code/mext_cap_pulse_lab_final/combining_both_packages"
-RUN_NAME     = "Puls_400V_1200A-BESTE"   # muss zum Messlauf passen (CSV + meta.json)
+BASE_DIR     = r"C:\Users\mext\Documents\main_code\mext_cap_pulse_lab\combining_both_packages"
+RUN_NAME     = "t1"   # muss zum Messlauf passen (CSV + meta.json)
 USE_LAST     = False            # True: neuesten pulse_id verwenden; False: PULSE_ID nutzen
 PULSE_ID     = 3               # nur wenn USE_LAST=False
 U_DC_BIAS_V  = 400.0         # DC-Bias der Spannung (wenn AC-gekoppelt gemessen)
@@ -487,14 +487,14 @@ if __name__ == "__main__":
         res = pulse_energy_and_power(
             t, u, i_sig,
             i_unit = "A" if i_colname == "i_A" else "V",
-            rogowski_v_per_a = rogowski_scale,
+            rogowski_per_a = rogowski_scale,
             u_is_ac_coupled = True,
             u_dc_bias_V = U_DC_BIAS_V,
             baseline_correction = True,
             pre_pct = 0.05
         )
 
-        esr, cap = estimate_cap_params(t, u, i)
+        esr, cap = estimate_cap_params(t, u, i_sig)
         esr_arr.append(esr); cap_arr.append(cap)
         print(f"ESR: {esr:.6f} Ω, C: {cap*1e6:.6f} µF")
         print(f"Energie: {res['E_J']:.3f} J | P_peak: {res['P_peak_W']:.1f} W | P_avg: {res['P_avg_W']:.1f} W")

@@ -15,14 +15,21 @@ from datetime import datetime
 from picosdk.ps3000a import ps3000a as ps    # Picoscope PS3000A SDK 
 from picosdk.functions import assert_pico_ok # Fehlerprüfung SDK-Aufrufe
 
+# Basisordner & Run-Verzeichnis
+BASE_DIR     = r"C:\Users\mext\Documents\main_code\mext_cap_pulse_lab\combining_both_packages"
 
+RUN_NAME            = "t1"  # Messlauf-Name (Ordner+Datei) Pulse_Test_30V_Source_1
+RUN_DIR    = os.path.join(BASE_DIR, "Runs", RUN_NAME) 
+CSV_PATH   = os.path.join(RUN_DIR, f"{RUN_NAME}.csv")
+META_PATH  = os.path.join(RUN_DIR, f"{RUN_NAME}.meta.json")
+os.makedirs(RUN_DIR, exist_ok=True)
 # ================= SPEICHERMODUS =================
 # "combined"  → Append aller Pulse in eine große CSV
 # "per_pulse" → Jeder Puls wird als eigene CSV gespeichert
 # "both"       → Beides
 SAVE_MODE = "per_pulse"
 # =================== CONTROL ===================
-RUN_NAME            = "90V_DC_300A-3"  # Messlauf-Name (Ordner+Datei) Pulse_Test_30V_Source_1
+
 AUTO_TRIG_MS        = 0            # Fallback-Trigger
 TRIG_LEVEL_V        = -0.2           # Trigger auf CH A (AC), in Volt
 
@@ -51,12 +58,7 @@ ROGOWSKI_V_PER_A    = 0.02          # z.B. 0.1 (V/A). None => CSV in Volt
 U_PROBE_ATTENUATION = 50.0 # 1:10 Tastkopf
 # ==================================================
 
-# Basisordner & Run-Verzeichnis
-BASE_DIR   = r"C:\Users\mext\Documents\02 Python Schnittstelle STM32 serielle Steuerung\mext_cap_testbench_control_code\picoscope"
-RUN_DIR    = os.path.join(BASE_DIR, "Runs", RUN_NAME) 
-CSV_PATH   = os.path.join(RUN_DIR, f"{RUN_NAME}.csv")
-META_PATH  = os.path.join(RUN_DIR, f"{RUN_NAME}.meta.json")
-os.makedirs(RUN_DIR, exist_ok=True)
+
 
 PER_PULSE_DIR = os.path.join(RUN_DIR, "Pulses")
 # ---------- SDK-Helfer ----------
