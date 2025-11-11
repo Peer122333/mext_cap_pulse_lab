@@ -193,7 +193,7 @@ def read_pulse_auto(pulse_id: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         return data[:,0], data[:,1], data[:,2]
 
     elif _per_pulse_exists():
-        path = os.path.join(PER_PULSE_DIR, f"{RUN_NAME}_pulse-{pulse_id:04d}.csv")
+        path = os.path.join(PER_PULSE_DIR, f"{RUN_NAME}_pulse-{pulse_id:10d}.csv")
         if not os.path.isfile(path):
             raise FileNotFoundError(f"Pulse-Datei fehlt: {path}")
         rows = []

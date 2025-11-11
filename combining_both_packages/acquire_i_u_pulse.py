@@ -209,7 +209,7 @@ def write_pulse_csv(t, u, i, i_unit, pulse_id, meta=None, out_dir=PER_PULSE_DIR)
     Spalten: sample_idx,time_s,u_V,i_<i_unit>
     """
     os.makedirs(PER_PULSE_DIR, exist_ok=True)
-    out_path = os.path.join(PER_PULSE_DIR, f"{RUN_NAME}_pulse-{pulse_id:04d}.csv")
+    out_path = os.path.join(PER_PULSE_DIR, f"{RUN_NAME}_pulse-{pulse_id:10d}.csv")
 
     header = (
         f"# RUN_NAME={RUN_NAME}\n"
