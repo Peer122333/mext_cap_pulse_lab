@@ -20,7 +20,7 @@ from picosdk.functions import assert_pico_ok # Fehlerprüfung SDK-Aufrufe
 # "combined"  → Append aller Pulse in eine große CSV
 # "per_pulse" → Jeder Puls wird als eigene CSV gespeichert
 # "both"       → Beides
-SAVE_MODE = "combined"
+SAVE_MODE = "per_pulse"
 # =================== CONTROL ===================
 RUN_NAME            = "90V_DC_300A-3"  # Messlauf-Name (Ordner+Datei) Pulse_Test_30V_Source_1
 AUTO_TRIG_MS        = 0            # Fallback-Trigger
@@ -212,6 +212,9 @@ def write_pulse_csv(t, u, i, i_unit, pulse_id, meta=None, out_dir=PER_PULSE_DIR)
     header = (
         f"# RUN_NAME={RUN_NAME}\n"
         f"# pulse_id={pulse_id}\n"
+        f"# i_unit={i_unit}\n"                     
+        f"# rogowski_v_per_a={ROGOWSKI_V_PER_A}\n" #  hilfreich für spätere Auswertung
+        f"# u_probe_attenuation={U_PROBE_ATTENUATION}\n"
         f"# created={datetime.now().isoformat()}\n"
         f"# columns: sample_idx,time_s,u_V,i_{i_unit}\n"
     )
@@ -287,22 +290,25 @@ def acquire_n_pulses(n_pulses=N_PULSES, inter_pulse_delay_s=INTER_PULSE_DELAY_S)
 
         # Header & Meta einmalig schreiben
         i_unit = "A" if (ROGOWSKI_V_PER_A and ROGOWSKI_V_PER_A > 0) else "V"
-        _csv_exists_write_header(i_unit)
+
+        # Start-pulse_id nur einmal ermitteln
+        if SAVE_MODE in ("combined", "both"):
+            _csv_exists_write_header(i_unit)
+            pulse_id = _next_pulse_id_scan()
+        else:  # "per_pulse"
+            pulse_id = _next_pulse_id_from_files()
+
         write_meta_once(dict(
             run_name=RUN_NAME, fs=fs, dt_s=dt,
             pretrigger_samples=pre, posttrigger_samples=post,
             ch_a=dict(coupling="AC", v_range=vfs_a),
             ch_b=dict(coupling="AC", v_range=vfs_b, rogowski_v_per_a=ROGOWSKI_V_PER_A),
             trigger_level_v=TRIG_LEVEL_V,
+            per_pulse_dir=PER_PULSE_DIR
         ))
+        
+        time.sleep(1)
 
-        # Start-pulse_id nur einmal ermitteln
-        if SAVE_MODE in ("combined", "both"):
-            pulse_id = _next_pulse_id_scan()
-        else:  # "per_pulse"
-            pulse_id = _next_pulse_id_from_files()
-
-        time.sleep(10)
         # Schleife über Pulse
         for k in range(n_pulses):
             time_indisposed_ms = ct.c_int32(0)
@@ -331,7 +337,10 @@ def acquire_n_pulses(n_pulses=N_PULSES, inter_pulse_delay_s=INTER_PULSE_DELAY_S)
             
             u = adcA * (vfs_a / max_adc.value) * U_PROBE_ATTENUATION
             i_v = adcB * (vfs_b / max_adc.value)
-            i = i_v / ROGOWSKI_V_PER_A
+            if ROGOWSKI_V_PER_A and ROGOWSKI_V_PER_A > 0:
+                i = i_v / ROGOWSKI_V_PER_A
+            else:
+                i = i_v
 
             print(f'Spannung U (CH A): min={u.min():.3f} V  max={u.max():.3f} V')
             print(f'Strom I (CH B): min={i.min():.3f} {i_unit}  max={i.max():.3f} {i_unit}')

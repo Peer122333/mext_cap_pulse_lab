@@ -22,6 +22,7 @@ BASE_DIR     = r"/Users/peer/Documents/00 MEXT BA/10 Code/mext_cap_pulse_lab_fin
 RUN_NAME     = "Puls_400V_1200A-BESTE"   # muss zum Messlauf passen (CSV + meta.json)
 USE_LAST     = False            # True: neuesten pulse_id verwenden; False: PULSE_ID nutzen
 PULSE_ID     = 3               # nur wenn USE_LAST=False
+U_DC_BIAS_V  = 400.0         # DC-Bias der Spannung (wenn AC-gekoppelt gemessen)
 
 OVERLAY_IDS  = [1,2,3]              # z.B. [1,2,5] -> zusätzliche Pulse überlagern
 SHOW_FFT     = False           # FFT des Hauptpulses
@@ -369,7 +370,7 @@ def estimate_cap_params(t: np.ndarray, u: np.ndarray, i: np.ndarray) -> Tuple[fl
 def pulse_energy_and_power(
     t, u, i, *,
     i_unit: str = "A",
-    rogovski_v_per_a: float | None = None,
+    rogowski_per_a: float | None = None,
     u_is_ac_coupled: bool = True,
     u_dc_bias_V: float | None = None,
     baseline_correction: bool = True,
@@ -382,9 +383,9 @@ def pulse_energy_and_power(
 
     # Rogowski V -> A
     if i_unit.upper() == "V":
-        if not rogovski_v_per_a:
+        if not rogowski_per_a:
             raise ValueError("rogowski_v_per_a nötig, wenn i in V vorliegt.")
-        i = i / float(rogovski_v_per_a)
+        i = i / float(rogowski_per_a)
 
     # Offsets nur auf AC-Signale anwenden (vor DC-Addback)
     if baseline_correction and t.size > 10:
@@ -475,18 +476,20 @@ if __name__ == "__main__":
 
     for pulse_id in ids_to_analyze:
         print(f"\n--- Analysiere Pulse-ID: {pulse_id} ---")
-        t, u, i = read_pulse_auto(pulse_id)
+        
+        i_colname = detect_i_unit_auto(pulse_id)
+        t, u, i_sig = read_pulse_auto(pulse_id)
         print(f"Pulsdaten geladen: {len(t)} Samples")
 
         rogowski_scale = meta.get("ch_b", {}).get("rogowski_v_per_a", None)
         print(f"Rogowski-Skala: {rogowski_scale} V/A")
 
         res = pulse_energy_and_power(
-            t, u, i,
+            t, u, i_sig,
             i_unit = "A" if i_colname == "i_A" else "V",
-            rogovski_v_per_a = rogowski_scale,
+            rogowski_v_per_a = rogowski_scale,
             u_is_ac_coupled = True,
-            u_dc_bias_V = 400.0,
+            u_dc_bias_V = U_DC_BIAS_V,
             baseline_correction = True,
             pre_pct = 0.05
         )
