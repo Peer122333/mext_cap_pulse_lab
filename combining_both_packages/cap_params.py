@@ -19,12 +19,12 @@ import matplotlib.pyplot as plt
 
 # ===================== CONTROL =====================
 BASE_DIR     = r"C:\Users\mext\Documents\main_code\mext_cap_pulse_lab\combining_both_packages"
-RUN_NAME     = "t1"   # muss zum Messlauf passen (CSV + meta.json)
+RUN_NAME     = "t2"   # muss zum Messlauf passen (CSV + meta.json)
 USE_LAST     = False            # True: neuesten pulse_id verwenden; False: PULSE_ID nutzen
 PULSE_ID     = 3               # nur wenn USE_LAST=False
-U_DC_BIAS_V  = 400.0         # DC-Bias der Spannung (wenn AC-gekoppelt gemessen)
+U_DC_BIAS_V  = 100.0         # DC-Bias der Spannung (wenn AC-gekoppelt gemessen)
 
-OVERLAY_IDS  = [1,2,3]              # z.B. [1,2,5] -> zusätzliche Pulse überlagern
+OVERLAY_IDS  = list(range(1,500))              # z.B. [1,2,5] -> zusätzliche Pulse überlagern
 SHOW_FFT     = False           # FFT des Hauptpulses
 FIG_SIZE     = (13, 8)         # großes Fenster
 LINEWIDTH    = 1.1

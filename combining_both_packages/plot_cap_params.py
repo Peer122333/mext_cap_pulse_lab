@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 # ===================== CONTROL =====================
-RUN_NAME         = "t1"
+RUN_NAME         = "t2"
 
 # Optionen
 SMOOTH_OVERLAY   = True     # Glättung (Moving Average) als Overlay zeichnen
