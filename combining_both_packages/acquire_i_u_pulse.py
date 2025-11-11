@@ -18,7 +18,7 @@ from picosdk.functions import assert_pico_ok # Fehlerprüfung SDK-Aufrufe
 # Basisordner & Run-Verzeichnis
 BASE_DIR     = r"C:\Users\mext\Documents\main_code\mext_cap_pulse_lab\combining_both_packages"
 
-RUN_NAME            = "t1"  # Messlauf-Name (Ordner+Datei) Pulse_Test_30V_Source_1
+RUN_NAME            = "t2"  # Messlauf-Name (Ordner+Datei) Pulse_Test_30V_Source_1
 RUN_DIR    = os.path.join(BASE_DIR, "Runs", RUN_NAME) 
 CSV_PATH   = os.path.join(RUN_DIR, f"{RUN_NAME}.csv")
 META_PATH  = os.path.join(RUN_DIR, f"{RUN_NAME}.meta.json")
@@ -40,7 +40,7 @@ PRETRIG_RATIO       = 0.2            # 20% vor Trigger
 N_SAMPLES           = 400_000 + int(PRETRIG_RATIO * 400_000)   # Gesamtanzahl Samples
 
 # Anzahl Pulse in einer Session + Wartezeit zwischen Pulsen
-N_PULSES            = 3
+N_PULSES            = 1000
 INTER_PULSE_DELAY_S = 0.0            # z.B. 0.01 für 10 ms Pause
 
 # Kanal A: Spannung (kleiner Bereich für höhere Auflösung)
@@ -209,7 +209,7 @@ def write_pulse_csv(t, u, i, i_unit, pulse_id, meta=None, out_dir=PER_PULSE_DIR)
     Spalten: sample_idx,time_s,u_V,i_<i_unit>
     """
     os.makedirs(PER_PULSE_DIR, exist_ok=True)
-    out_path = os.path.join(PER_PULSE_DIR, f"{RUN_NAME}_pulse-{pulse_id:10d}.csv")
+    out_path = os.path.join(PER_PULSE_DIR, f"{RUN_NAME}_pulse-{pulse_id:010d}.csv")
 
     header = (
         f"# RUN_NAME={RUN_NAME}\n"

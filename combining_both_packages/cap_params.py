@@ -151,7 +151,7 @@ def detect_i_unit_auto(pulse_id: int | None = None) -> str:
         pid = pulse_id if pulse_id is not None else (ids[-1] if ids else None)
         if pid is None:
             raise FileNotFoundError("Keine Pulsdateien gefunden.")
-        path = os.path.join(PER_PULSE_DIR, f"{RUN_NAME}_pulse-{pid:04d}.csv")
+        path = os.path.join(PER_PULSE_DIR, f"{RUN_NAME}_pulse-{pid:010d}.csv")
         with open(path, "r", encoding="utf-8") as f:
             for line in f:
                 if not line.startswith("#"):
@@ -193,7 +193,7 @@ def read_pulse_auto(pulse_id: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         return data[:,0], data[:,1], data[:,2]
 
     elif _per_pulse_exists():
-        path = os.path.join(PER_PULSE_DIR, f"{RUN_NAME}_pulse-{pulse_id:10d}.csv")
+        path = os.path.join(PER_PULSE_DIR, f"{RUN_NAME}_pulse-{pulse_id:010d}.csv")
         if not os.path.isfile(path):
             raise FileNotFoundError(f"Pulse-Datei fehlt: {path}")
         rows = []
