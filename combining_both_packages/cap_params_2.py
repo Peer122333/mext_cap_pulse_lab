@@ -7,14 +7,14 @@ aus gemessenen Spannungs- und Strompulsen.
 
 Die Berechnung basiert auf einer FFT-basierten Methode, die ein
 lineares Gleichungssystem löst, um die Impedanz-Parameter zu bestimmen.
-"""
 
-import numpy as np
-from typing import Tuple
+Erweiterung: optionales ESL-Modell (ESR + C + L_ESL) zum Vergleich.
+"""
 
 import os
 import json
 import numpy as np
+from typing import Tuple
 import matplotlib.pyplot as plt
 
 # ===================== CONTROL =====================
@@ -24,20 +24,20 @@ USE_LAST     = False            # True: neuesten pulse_id verwenden; False: PULS
 PULSE_ID     = 3               # nur wenn USE_LAST=False
 U_DC_BIAS_V  = 400.0         # DC-Bias der Spannung (wenn AC-gekoppelt gemessen)
 
-OVERLAY_IDS  = [1,2,3]              # z.B. [1,2,5] -> zusätzliche Pulse überlagern
-SHOW_FFT     = False           # FFT des Hauptpulses
-FIG_SIZE     = (13, 8)         # großes Fenster
+OVERLAY_IDS  = [1,2,3]       # z.B. [1,2,5] -> zusätzliche Pulse überlagern
+SHOW_FFT     = False         # FFT des Hauptpulses
+FIG_SIZE     = (13, 8)       # großes Fenster
 LINEWIDTH    = 1.1
 GRID_ALPHA   = 0.25
 # ===================================================
 
 # Pfade
-RUN_DIR   = os.path.join(BASE_DIR, "Runs", RUN_NAME)
-PER_PULSE_DIR = os.path.join(RUN_DIR, "Pulses")
+RUN_DIR        = os.path.join(BASE_DIR, "Runs", RUN_NAME)
+PER_PULSE_DIR  = os.path.join(RUN_DIR, "Pulses")
 PARAMS_CSV_PATH = os.path.join(RUN_DIR, f"{RUN_NAME}.params.csv")
 print(RUN_DIR)
-CSV_PATH  = os.path.join(RUN_DIR, f"{RUN_NAME}.csv")
-META_PATH = os.path.join(RUN_DIR, f"{RUN_NAME}.meta.json")
+CSV_PATH       = os.path.join(RUN_DIR, f"{RUN_NAME}.csv")
+META_PATH      = os.path.join(RUN_DIR, f"{RUN_NAME}.meta.json")
 
 
 # --------- Helpers ---------
@@ -60,6 +60,7 @@ def _params_exists_write_header():
     if not os.path.exists(PARAMS_CSV_PATH):
         with open(PARAMS_CSV_PATH, "w", encoding="utf-8") as f:
             f.write(_params_header())
+
 def _source_mode_str() -> str:
     if _combined_exists() and _per_pulse_exists():
         return "both"
@@ -80,12 +81,14 @@ def append_params_row(
     _params_exists_write_header()
     # mittlere Pulszeit als einfacher Zeitstempel für Trends
     t_mid = float(0.5*(t[0] + t[-1])) if t.size else float("nan")
-    # robust: NaNs → leer schreiben (CSV bleibt numerisch)
-    def _num(x): 
+
+    def _num(x):
+        # robust: NaNs → leer schreiben (CSV bleibt numerisch)
         try:
             return f"{float(x):.9e}"
         except Exception:
             return ""
+
     line = ",".join([
         str(int(pulse_id)),
         _num(t_mid),
@@ -97,6 +100,7 @@ def append_params_row(
         i_colname,
         source
     ]) + "\n"
+
     with open(PARAMS_CSV_PATH, "a", encoding="utf-8") as f:
         f.write(line)
 
@@ -109,7 +113,7 @@ def list_pulse_ids_auto() -> list[int]:
         ids = set()
         with open(CSV_PATH, "r", encoding="utf-8") as f:
             for line in f:
-                if line.startswith("#"): 
+                if line.startswith("#"):
                     continue
                 try:
                     pid = int(line.split(",", 1)[0])
@@ -170,7 +174,6 @@ def read_pulse_auto(pulse_id: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     Liest (t,u,i) für die angegebene pulse_id – Quelle automatisch.
     """
     if _combined_exists():
-        # wie bisher aus der großen CSV
         rows = []
         with open(CSV_PATH, "r", encoding="utf-8") as f:
             for line in f:
@@ -184,7 +187,9 @@ def read_pulse_auto(pulse_id: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                 except Exception:
                     continue
                 if pid == pulse_id:
-                    t = float(parts[2]); u = float(parts[3]); i = float(parts[4])
+                    t = float(parts[2])
+                    u = float(parts[3])
+                    i = float(parts[4])
                     rows.append((t, u, i))
         if not rows:
             raise FileNotFoundError(f"Pulse-ID {pulse_id} nicht in {CSV_PATH} gefunden.")
@@ -204,8 +209,9 @@ def read_pulse_auto(pulse_id: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                 parts = line.strip().split(",")
                 if len(parts) < 4:
                     continue
-                # sample_idx = int(parts[0])  # optional
-                t = float(parts[1]); u = float(parts[2]); i = float(parts[3])
+                t = float(parts[1])
+                u = float(parts[2])
+                i = float(parts[3])
                 rows.append((t, u, i))
         if not rows:
             raise ValueError(f"Keine Datenzeilen in {path}.")
@@ -232,7 +238,6 @@ def detect_i_unit_from_header():
             if not line.startswith("#"):
                 break
             if "columns:" in line:
-                # Beispiel-Zeile: "# columns: pulse_id,sample_idx,time_s,u_V,i_A"
                 cols = line.split("columns:")[-1].strip()
                 parts = [p.strip() for p in cols.split(",")]
                 for p in parts:
@@ -242,131 +247,71 @@ def detect_i_unit_from_header():
     return i_colname  # "i_A" oder "i_V"
 
 
+# ======= FFT-basierte Parameter-Schätzung (ohne ESL) =======
 def estimate_cap_params(t: np.ndarray, u: np.ndarray, i: np.ndarray) -> Tuple[float, float]:
     """
     Schätzt ESR (Equivalent Series Resistance) und Kapazität aus Puls-Messdaten.
-    
-    Die Funktion verwendet eine FFT-basierte Analyse, um die Impedanz des
-    Kondensators zu bestimmen. Dabei wird ein vereinfachtes Ersatzschaltbild
-    angenommen: Serie aus Widerstand (ESR) und Kapazität.
-    
-    Die Methode löst ein lineares Gleichungssystem im Frequenzbereich:
+
+    Einfaches Serien-Ersatzschaltbild: ESR + C
     U(ω) = ESR * I(ω) + (1/jωC) * I(ω)
-    
-    Parameters
-    ----------
-    t : np.ndarray
-        Zeitvektor in Sekunden (1D-Array).
-        Muss streng monoton steigend sein.
-    u : np.ndarray
-        Spannungswerte in Volt (1D-Array, gleiche Länge wie t).
-        Gemessene Spannung am Kondensator.
-    i : np.ndarray
-        Stromwerte in Ampere (1D-Array, gleiche Länge wie t).
-        Gemessener Strom durch den Kondensator.
-        Hinweis: Das Vorzeichen sollte so sein, dass positiver Strom
-        eine Entladung darstellt (konsistent mit dem MATLAB-Code).
-    
-    Returns
-    -------
-    esr_ohm : float
-        Geschätzter Equivalent Series Resistance in Ohm.
-        Repräsentiert den Serienwiderstand des Kondensators.
-    capacitance_f : float
-        Geschätzte Kapazität in Farad.
-        Kann in µF oder mF umgerechnet werden (1 µF = 1e-6 F).
-    
-    Raises
-    ------
-    ValueError
-        Wenn Zeitvektor nicht streng monoton steigend ist,
-        oder wenn die Arrays unterschiedliche Längen haben,
-        oder wenn keine positiven Frequenzen gefunden werden.
-    
-    Notes
-    -----
-    - Die Funktion verwendet Least-Squares-Methode zur Lösung des
-      überbestimmten Gleichungssystems im Frequenzbereich.
-    - DC-Komponente (f=0) wird ausgeschlossen, da sie keine
-      Impedanz-Information liefert.
-    - Erste positive Frequenz wird übersprungen (ähnlich MATLAB-Code)
-      um numerische Instabilitäten bei sehr kleinen Frequenzen zu vermeiden.
-    - Nur positive Frequenzen werden verwendet (einseitiges Spektrum).
-    
-    Examples
-    --------
-    >>> import numpy as np
-    >>> # Beispiel: Synthetische Daten
-    >>> t = np.linspace(0, 1e-3, 1000)  # 1 ms, 1000 Samples
-    >>> u = np.exp(-t / 1e-4) * 10  # Exponentieller Abfall
-    >>> i = -np.diff(np.pad(u, (0, 1)))  # Vereinfachter Strom
-    >>> esr, cap = estimate_cap_params(t, u, i)
-    >>> print(f"ESR: {esr:.6f} Ω, C: {cap*1e6:.6f} µF")
     """
     # Eingabevalidierung
     t = np.asarray(t, dtype=float)
-    u = np.asarray(u, dtype=complex)  # Komplex erlauben (für FFT)
+    u = np.asarray(u, dtype=complex)
     i = np.asarray(i, dtype=complex)
-    
+
     if len(t) != len(u) or len(t) != len(i):
         raise ValueError("Arrays t, u, i müssen gleiche Länge haben")
-    
+
     # Zeitvektor prüfen: muss streng monoton steigend sein
     dt = np.diff(t)
     if np.any(dt <= 0):
         raise ValueError("Zeitvektor muss streng monoton steigend sein")
-    
+
     # Abtastfrequenz aus mittlerem Zeitabstand berechnen
     fs = 1.0 / np.mean(dt)
     N = t.size
-    
+
     # FFT berechnen (shifted für symmetrische Darstellung)
     fU = np.fft.fftshift(np.fft.fft(u))
     fI = np.fft.fftshift(np.fft.fft(i))
-    
+
     # Frequenzachse generieren (shifted)
     f = np.fft.fftshift(np.fft.fftfreq(N, d=1.0 / fs))
-    omega = 2.0 * np.pi * f  # Kreisfrequenz
-    
+    omega = 2.0 * np.pi * f
+
     # Nur positive Frequenzen verwenden (DC ausschließen)
     pos_idx = np.where(f > 0)[0]
     if pos_idx.size == 0:
         raise ValueError("Keine positiven Frequenzen gefunden (N zu klein?)")
-    
-    # Erste positive Frequenz überspringen (wie im MATLAB-Code)
-    # Vermeidet numerische Instabilitäten bei sehr kleinen Omega
+
+    # Erste positive Frequenz überspringen
     if pos_idx.size > 1:
-        idx = pos_idx[1:]  # Ab Index 1
+        idx = pos_idx[1:]
     else:
-        idx = pos_idx  # Fallback: nur eine positive Frequenz
-    
-    # Lineares Gleichungssystem aufbauen: A * x = b
-    # U(ω) = ESR * I(ω) + (1/jωC) * I(ω)
-    # A = [I(ω), -I(ω)/(jω)]
+        idx = pos_idx
+
+    FI = fI[idx]
+    OM = omega[idx]
+
+    # Design-Matrix: A * x = b
     # x = [ESR, 1/C]
-    # b = U(ω)
-    FI = fI[idx]  # Strom-FFT bei ausgewählten Frequenzen
-    OM = omega[idx]  # Kreisfrequenzen
-    
-    # Vermeide Division durch Null (sollte nicht passieren, da f > 0)
     A = np.column_stack([
-        FI,  # Spalte 1: Strom-FFT (für ESR)
-        (-1j / OM) * FI  # Spalte 2: Strom-FFT / jω (für 1/C)
+        FI,
+        (-1j / OM) * FI
     ])
-    b = fU[idx]  # Spannungs-FFT (Zielvektor)
-    
-    # Least-Squares-Lösung (überbestimmtes System)
+    b = fU[idx]
+
+    # Least-Squares-Lösung
     x, *_ = np.linalg.lstsq(A, b, rcond=None)
-    
-    # Parameter extrahieren
-    esr_ohm = float(np.real(x[0]))  # Realteil von x[0] ist ESR
-    capacitance_f = float(np.real(1.0 / x[1]))  # Realteil von 1/x[1] ist C
-    
+
+    esr_ohm = float(np.real(x[0]))
+    capacitance_f = float(np.real(1.0 / x[1]))
+
     return esr_ohm, capacitance_f
 
-from typing import Tuple
-import numpy as np
 
+# ======= FFT-basierte Parameter-Schätzung (mit ESL) =======
 def estimate_cap_params_with_esl(
     t: np.ndarray,
     u: np.ndarray,
@@ -374,112 +319,65 @@ def estimate_cap_params_with_esl(
 ) -> Tuple[float, float, float]:
     """
     Schätzt ESR, Kapazität und ESL aus Puls-Messdaten mittels FFT-basierter Impedanzanalyse.
-    
+
     Erweitertes Ersatzschaltbild:
         Z(ω) = ESR + jω L_ESL + 1/(jω C)
-    
-    Daraus folgt im Frequenzbereich:
-        U(ω) = I(ω) * [ESR + jω L_ESL + 1/(jω C)]
-             = ESR * I(ω) + (jω) * L_ESL * I(ω) + (1/(jωC)) * I(ω)
-    
-    Wir formulieren ein lineares Gleichungssystem:
-        U(ω) = A(ω) * x
-    
-    mit
-        A(ω) = [ I(ω),  (jω) I(ω),  (-j/ω) I(ω) ]
-        x    = [ ESR,  L_ESL,       1/C        ]^T
-    
-    und lösen x im Least-Squares-Sinn.
-    
-    Parameters
-    ----------
-    t : np.ndarray
-        Zeitvektor in Sekunden (1D-Array).
-        Muss streng monoton steigend sein.
-    u : np.ndarray
-        Spannungswerte in Volt (1D-Array, gleiche Länge wie t).
-        Gemessene Spannung am Kondensator.
-    i : np.ndarray
-        Stromwerte in Ampere (1D-Array, gleiche Länge wie t).
-        Gemessener Strom durch den Kondensator.
-    
-    Returns
-    -------
-    esr_ohm : float
-        Geschätzter Equivalent Series Resistance in Ohm.
-    capacitance_f : float
-        Geschätzte Kapazität in Farad.
-    esl_h : float
-        Geschätzte Serieninduktivität (ESL) in Henry.
-    
-    Raises
-    ------
-    ValueError
-        Wenn Zeitvektor nicht streng monoton steigend ist,
-        oder wenn die Arrays unterschiedliche Längen haben,
-        oder wenn keine positiven Frequenzen gefunden werden.
     """
     # Eingabevalidierung
     t = np.asarray(t, dtype=float)
-    u = np.asarray(u, dtype=complex)  # komplex für FFT
+    u = np.asarray(u, dtype=complex)
     i = np.asarray(i, dtype=complex)
-    
+
     if len(t) != len(u) or len(t) != len(i):
         raise ValueError("Arrays t, u, i müssen gleiche Länge haben")
-    
-    # Zeitvektor prüfen: muss streng monoton steigend sein
+
+    # Zeitvektor prüfen
     dt = np.diff(t)
     if np.any(dt <= 0):
         raise ValueError("Zeitvektor muss streng monoton steigend sein")
-    
+
     # Abtastfrequenz und Anzahl Samples
     fs = 1.0 / np.mean(dt)
     N = t.size
-    
-    # FFT berechnen (mit shift für symmetrische Darstellung)
+
+    # FFT berechnen (mit shift)
     fU = np.fft.fftshift(np.fft.fft(u))
     fI = np.fft.fftshift(np.fft.fft(i))
-    
-    # Frequenzachse (shifted)
+
+    # Frequenzachse
     f = np.fft.fftshift(np.fft.fftfreq(N, d=1.0 / fs))
-    omega = 2.0 * np.pi * f  # Kreisfrequenz
-    
-    # Nur positive Frequenzen verwenden (DC ausschließen)
+    omega = 2.0 * np.pi * f
+
+    # Nur positive Frequenzen
     pos_idx = np.where(f > 0)[0]
     if pos_idx.size == 0:
         raise ValueError("Keine positiven Frequenzen gefunden (N zu klein?)")
-    
-    # Erste positive Frequenz überspringen (vermeidet numerische Probleme)
+
     if pos_idx.size > 1:
         idx = pos_idx[1:]
     else:
         idx = pos_idx
-    
+
     FI = fI[idx]
     OM = omega[idx]
-    
-    # Design-Matrix A aufbauen:
-    # Spalte 1: I(ω)                 → ESR
-    # Spalte 2: jω I(ω)              → L_ESL
-    # Spalte 3: (-j/ω) I(ω)          → 1/C
+
+    # Design-Matrix:
+    # A(ω) = [ I(ω),  jω I(ω),  (-j/ω) I(ω) ]
     A = np.column_stack([
         FI,
         1j * OM * FI,
         (-1j / OM) * FI
     ])
     b = fU[idx]
-    
+
     # Least-Squares-Lösung
     x, *_ = np.linalg.lstsq(A, b, rcond=None)
-    
+
     esr_ohm = float(np.real(x[0]))
     esl_h = float(np.real(x[1]))
     capacitance_f = float(np.real(1.0 / x[2]))
-    
+
     return esr_ohm, capacitance_f, esl_h
-
-
-
 
 
 def pulse_energy_and_power(
@@ -491,7 +389,6 @@ def pulse_energy_and_power(
     baseline_correction: bool = True,
     pre_pct: float = 0.05
 ) -> dict:
-    import numpy as np
     t = np.asarray(t, float)
     u = np.asarray(u, float)
     i = np.asarray(i, float)
@@ -531,9 +428,6 @@ def read_pulse_from_csv(pulse_id, i_colname):
     if not os.path.isfile(CSV_PATH):
         raise FileNotFoundError(f"CSV nicht gefunden: {CSV_PATH}")
 
-    # Spalten: pulse_id,sample_idx,time_s,u_V,i_{V|A}
-    # Wir lesen nur Datenzeilen (skip '#'), dann filtern wir auf pulse_id.
-    # Für moderate Dateigrößen ist das okay. Bei >GB CSV später auf chunking umstellen.
     rows = []
     with open(CSV_PATH, "r", encoding="utf-8") as f:
         for line in f:
@@ -544,10 +438,9 @@ def read_pulse_from_csv(pulse_id, i_colname):
                 continue
             try:
                 pid = int(parts[0])
-            except:
+            except Exception:
                 continue
             if pid == pulse_id:
-                # sample_idx = int(parts[1])  # würde die Reihenfolge sichern, falls nötig
                 t = float(parts[2])
                 u = float(parts[3])
                 i = float(parts[4])
@@ -556,7 +449,6 @@ def read_pulse_from_csv(pulse_id, i_colname):
     if not rows:
         raise FileNotFoundError(f"Pulse-ID {pulse_id} nicht in CSV gefunden.")
 
-    # nach Zeit sortieren (falls Zeilenreihenfolge nicht sicher)
     rows.sort(key=lambda r: r[0])
     data = np.array(rows, dtype=float)
     t = data[:, 0]
@@ -564,8 +456,14 @@ def read_pulse_from_csv(pulse_id, i_colname):
     i = data[:, 2]
     return t, u, i
 
+
 if __name__ == "__main__":
-    esr_arr, cap_arr = [], []
+    # Arrays für Vergleich beider Modelle
+    esr_simple_arr = []
+    c_simple_arr   = []
+    esr_esl_arr    = []
+    c_esl_arr      = []
+    l_esl_arr      = []
 
     meta = read_meta()
     print(f"Metadaten geladen: {meta}")
@@ -581,7 +479,7 @@ if __name__ == "__main__":
     # Ziel-IDs bestimmen
     if USE_LAST:
         ids_to_analyze = [available_ids[-1]]
-    elif OVERLAY_IDS:                # deine Liste wie gehabt
+    elif OVERLAY_IDS:
         ids_to_analyze = [pid for pid in OVERLAY_IDS if pid in available_ids]
     else:
         ids_to_analyze = [PULSE_ID] if PULSE_ID in available_ids else []
@@ -591,7 +489,7 @@ if __name__ == "__main__":
 
     for pulse_id in ids_to_analyze:
         print(f"\n--- Analysiere Pulse-ID: {pulse_id} ---")
-        
+
         i_colname = detect_i_unit_auto(pulse_id)
         t, u, i_sig = read_pulse_auto(pulse_id)
         print(f"Pulsdaten geladen: {len(t)} Samples")
@@ -601,32 +499,68 @@ if __name__ == "__main__":
 
         res = pulse_energy_and_power(
             t, u, i_sig,
-            i_unit = "A" if i_colname == "i_A" else "V",
-            rogowski_per_a = rogowski_scale,
-            u_is_ac_coupled = True,
-            u_dc_bias_V = U_DC_BIAS_V,
-            baseline_correction = True,
-            pre_pct = 0.05
+            i_unit="A" if i_colname == "i_A" else "V",
+            rogowski_per_a=rogowski_scale,
+            u_is_ac_coupled=True,
+            u_dc_bias_V=U_DC_BIAS_V,
+            baseline_correction=True,
+            pre_pct=0.05
         )
 
-        esr, cap = estimate_cap_params(t, u, i_sig)
+        # --- Parameter-Fits ---
         esr_simple, c_simple = estimate_cap_params(t, u, i_sig)
         esr_esl, c_esl, l_esl = estimate_cap_params_with_esl(t, u, i_sig)
 
-        esr_arr.append(esr); cap_arr.append(cap)
-        print(f"ESR: {esr:.6f} Ω, C: {cap*1e6:.6f} µF")
-        print(f"Energie: {res['E_J']:.3f} J | P_peak: {res['P_peak_W']:.1f} W | P_avg: {res['P_avg_W']:.1f} W")
+        # in Arrays sammeln
+        esr_simple_arr.append(esr_simple)
+        c_simple_arr.append(c_simple)
+        esr_esl_arr.append(esr_esl)
+        c_esl_arr.append(c_esl)
+        l_esl_arr.append(l_esl)
+
+        # relative Abweichungen (in %)
+        d_esr_pct = 100.0 * (esr_esl - esr_simple) / esr_simple if esr_simple != 0 else np.nan
+        d_c_pct   = 100.0 * (c_esl   - c_simple) / c_simple   if c_simple   != 0 else np.nan
+
+        print(f"    ESR (ohne ESL): {esr_simple:.6f} Ω")
+        print(f"    ESR (mit  ESL): {esr_esl:.6f} Ω   (Δ = {d_esr_pct:+.2f} %)")
+        print(f"    C   (ohne ESL): {c_simple*1e6:.3f} µF")
+        print(f"    C   (mit  ESL): {c_esl*1e6:.3f} µF (Δ = {d_c_pct:+.2f} %)")
+        print(f"    L_ESL (fit):    {l_esl*1e9:.2f} nH")
+
+        print(f"    Energie: {res['E_J']:.3f} J | "
+              f"P_peak: {res['P_peak_W']:.1f} W | "
+              f"P_avg: {res['P_avg_W']:.1f} W")
+
+        # CSV-Logging: weiterhin das einfache Modell (ohne ESL),
+        # damit bestehende Auswerteskripte unverändert laufen.
         append_params_row(
             pulse_id=pulse_id,
             t=t,
-            esr=esr,
-            cap=cap,
+            esr=esr_simple,
+            cap=c_simple,
             res=res,
-            i_colname=i_colname,          # "i_A" oder "i_V"
+            i_colname=i_colname,
             source=_source_mode_str()
         )
 
-    print("\n=== Zusammenfassung ===")
-    for pid, esr, cap in zip(ids_to_analyze, esr_arr, cap_arr):
-        print(f"Pulse-ID {pid}: ESR = {esr:.6f} Ω, Kapazität = {cap*1e6:.6f} µF")
-    print(f"Durchschnitt: ESR = {np.mean(esr_arr):.6f} Ω, C = {np.mean(cap_arr)*1e6:.6f} µF")
+    # === Zusammenfassung ===
+    print("\n=== Zusammenfassung (Mittelwerte) ===")
+    mean_esr_simple = np.mean(esr_simple_arr)
+    mean_esr_esl    = np.mean(esr_esl_arr)
+    mean_c_simple   = np.mean(c_simple_arr)
+    mean_c_esl      = np.mean(c_esl_arr)
+    mean_l_esl      = np.mean(l_esl_arr)
+
+    print(f"ESR ohne ESL: {mean_esr_simple:.6f} Ω")
+    print(f"ESR mit  ESL: {mean_esr_esl:.6f} Ω")
+    print(f"C   ohne ESL: {mean_c_simple*1e6:.3f} µF")
+    print(f"C   mit  ESL: {mean_c_esl*1e6:.3f} µF")
+    print(f"L_ESL (mit ESL): {mean_l_esl*1e9:.2f} nH")
+
+    # globale Abweichungen
+    mean_d_esr = 100.0 * (mean_esr_esl - mean_esr_simple) / mean_esr_simple if mean_esr_simple != 0 else np.nan
+    mean_d_c   = 100.0 * (mean_c_esl   - mean_c_simple)   / mean_c_simple   if mean_c_simple   != 0 else np.nan
+
+    print(f"Durchschnittliche Abweichung ESR: {mean_d_esr:+.2f} %")
+    print(f"Durchschnittliche Abweichung C:   {mean_d_c:+.2f} %")
