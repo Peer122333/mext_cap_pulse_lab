@@ -8,7 +8,11 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 # ===================== CONTROL =====================
+<<<<<<< HEAD
 RUN_NAME         = "t2"
+=======
+RUN_NAME         = "Langzeittest_Cap2"
+>>>>>>> e8e37277a7d005bfa2a4fc5eccd2c3ce8bd42a14
 
 # Optionen
 SMOOTH_OVERLAY   = True     # Glättung (Moving Average) als Overlay zeichnen
